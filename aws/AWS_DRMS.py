@@ -1,5 +1,6 @@
 import boto3
 import sys
+import subprocess
 from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 
 # AWS 클라이언트 초기화
@@ -17,8 +18,7 @@ def list_instances():
                       f"[type] {instance['InstanceType']}, "
                       f"[state] {instance['State']['Name']}, "
                       f"[public IP] {instance.get('PublicIpAddress', 'N/A')}, "
-                      f"[launch time] {instance['LaunchTime']}, "
-                      f"[monitoring state] {instance['Monitoring']['State']}")
+                      f"[tags] {instance.get('Tags', 'None')}")
     except Exception as e:
         print(f"Error listing instances: {e}")
 
@@ -62,17 +62,15 @@ def reboot_instance(instance_id):
     except Exception as e:
         print(f"Error rebooting instance: {e}")
 
-def create_instance(ami_id, instance_type='t2.micro', key_name=None, security_group=None):
+def create_instance(ami_id):
     """새 인스턴스 생성"""
     print(f"Creating instance with AMI {ami_id}...")
     try:
         response = ec2.run_instances(
             ImageId=ami_id,
-            InstanceType=instance_type,
+            InstanceType='t2.micro',
             MinCount=1,
-            MaxCount=1,
-            KeyName=key_name,
-            SecurityGroupIds=[security_group] if security_group else None
+            MaxCount=1
         )
         instance_id = response['Instances'][0]['InstanceId']
         print(f"Successfully started EC2 instance {instance_id} based on AMI {ami_id}.")
@@ -89,23 +87,39 @@ def available_regions():
     except Exception as e:
         print(f"Error retrieving regions: {e}")
 
-def list_images(filter_name=None, owners=['self']):
+def list_images(filter_name=None):
     """AMI 이미지 목록 조회"""
     print("Listing images...")
     try:
         filters = []
         if filter_name:
             filters.append({'Name': 'name', 'Values': [filter_name]})
-        images = ec2.describe_images(Filters=filters, Owners=owners)
+        images = ec2.describe_images(Filters=filters)
         for image in images['Images']:
-            print(f"[ImageID] {image['ImageId']}, [Name] {image.get('Name', 'N/A')}, [Owner] {image['OwnerId']}, [State] {image['State']}")
+            print(f"[ImageID] {image['ImageId']}, [Name] {image.get('Name', 'N/A')}, [Owner] {image['OwnerId']}")
     except Exception as e:
         print(f"Error listing images: {e}")
+
+def condor_status():
+    """condor_status 명령 실행"""
+    print("Executing 'condor_status'...")
+    try:
+        result = subprocess.run(["condor_status"], capture_output=True, text=True)
+        if result.returncode == 0:
+            print("condor_status output:")
+            print(result.stdout)
+        else:
+            print("condor_status command failed.")
+            print(result.stderr)
+    except FileNotFoundError:
+        print("condor_status command not found. Please ensure HTCondor is installed and accessible.")
+    except Exception as e:
+        print(f"Error executing condor_status: {e}")
 
 def main():
     """메인 콘솔"""
     while True:
-        print("\nAWS EC2 Management")
+        print("\nAWS EC2 Management & HTCondor Status")
         print("1. List instances")
         print("2. Available zones")
         print("3. Start instance")
@@ -114,6 +128,7 @@ def main():
         print("6. Create instance")
         print("7. Reboot instance")
         print("8. List images")
+        print("9. Execute 'condor_status'")
         print("99. Quit")
         choice = input("Enter your choice: ")
 
@@ -131,16 +146,15 @@ def main():
             stop_instance(instance_id)
         elif choice == '6':
             ami_id = input("Enter the AMI ID to create an instance: ")
-            instance_type = input("Enter instance type (default: t2.micro): ") or 't2.micro'
-            key_name = input("Enter key pair name (optional): ") or None
-            security_group = input("Enter security group ID (optional): ") or None
-            create_instance(ami_id, instance_type, key_name, security_group)
+            create_instance(ami_id)
         elif choice == '7':
             instance_id = input("Enter the instance ID to reboot: ")
             reboot_instance(instance_id)
         elif choice == '8':
             filter_name = input("Enter AMI filter name (leave empty for all images): ")
             list_images(filter_name.strip() or None)
+        elif choice == '9':
+            condor_status()
         elif choice == '99':
             print("Exiting...")
             sys.exit()
