@@ -6,8 +6,8 @@ from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 # AWS 클라이언트 초기화
 ec2 = boto3.client('ec2', region_name='ap-northeast-2')
 
+# 1. EC2 인스턴스 목록 조회
 def list_instances():
-    """EC2 인스턴스 목록 조회"""
     print("Listing instances...")
     try:
         instances = ec2.describe_instances()
@@ -22,8 +22,8 @@ def list_instances():
     except Exception as e:
         print(f"Error listing instances: {e}")
 
+# 2. 사용 가능한 가용 영역 조회
 def available_zones():
-    """사용 가능한 가용 영역 조회"""
     print("Available zones...")
     try:
         zones = ec2.describe_availability_zones()
@@ -33,8 +33,9 @@ def available_zones():
     except Exception as e:
         print(f"Error retrieving availability zones: {e}")
 
+# 3. 인스턴스 시작
 def start_instance(instance_id):
-    """인스턴스 시작"""
+    
     print(f"Starting instance {instance_id}...")
     try:
         response = ec2.start_instances(InstanceIds=[instance_id])
@@ -43,8 +44,18 @@ def start_instance(instance_id):
     except Exception as e:
         print(f"Error starting instance: {e}")
 
+# 4. 사용 가능한 리전 조회
+def available_regions():
+    print("Available regions...")
+    try:
+        regions = ec2.describe_regions()
+        for region in regions['Regions']:
+            print(f"[region] {region['RegionName']}, [endpoint] {region['Endpoint']}")
+    except Exception as e:
+        print(f"Error retrieving regions: {e}")
+
+# 5. 인스턴스 중지
 def stop_instance(instance_id):
-    """인스턴스 중지"""
     print(f"Stopping instance {instance_id}...")
     try:
         response = ec2.stop_instances(InstanceIds=[instance_id])
@@ -53,17 +64,8 @@ def stop_instance(instance_id):
     except Exception as e:
         print(f"Error stopping instance: {e}")
 
-def reboot_instance(instance_id):
-    """인스턴스 재부팅"""
-    print(f"Rebooting instance {instance_id}...")
-    try:
-        ec2.reboot_instances(InstanceIds=[instance_id])
-        print(f"Successfully rebooted instance {instance_id}.")
-    except Exception as e:
-        print(f"Error rebooting instance: {e}")
-
+# 6. 인스턴스 생성
 def create_instance(ami_id):
-    """새 인스턴스 생성"""
     print(f"Creating instance with AMI {ami_id}...")
     try:
         response = ec2.run_instances(
@@ -77,18 +79,17 @@ def create_instance(ami_id):
     except Exception as e:
         print(f"Error creating instance: {e}")
 
-def available_regions():
-    """사용 가능한 리전 조회"""
-    print("Available regions...")
+# 7. 인스턴스 재부팅
+def reboot_instance(instance_id):
+    print(f"Rebooting instance {instance_id}...")
     try:
-        regions = ec2.describe_regions()
-        for region in regions['Regions']:
-            print(f"[region] {region['RegionName']}, [endpoint] {region['Endpoint']}")
+        ec2.reboot_instances(InstanceIds=[instance_id])
+        print(f"Successfully rebooted instance {instance_id}.")
     except Exception as e:
-        print(f"Error retrieving regions: {e}")
+        print(f"Error rebooting instance: {e}")
 
+# 8. AMI 이미지 목록 조회
 def list_images(filter_name=None):
-    """AMI 이미지 목록 조회"""
     print("Listing images...")
     try:
         filters = []
@@ -100,8 +101,8 @@ def list_images(filter_name=None):
     except Exception as e:
         print(f"Error listing images: {e}")
 
+# 9. HTCondor 상태 조회
 def condor_status():
-    """condor_status 명령 실행"""
     print("Executing 'condor_status'...")
     try:
         result = subprocess.run(["condor_status"], capture_output=True, text=True)
@@ -117,7 +118,6 @@ def condor_status():
         print(f"Error executing condor_status: {e}")
 
 def main():
-    """메인 콘솔"""
     while True:
         print("\nAWS EC2 Management & HTCondor Status")
         print("1. List instances")
@@ -168,3 +168,4 @@ if __name__ == "__main__":
         print("AWS credentials not found. Please configure them using 'aws configure'.")
     except PartialCredentialsError:
         print("Incomplete AWS credentials found. Please check your configuration.")
+ 
