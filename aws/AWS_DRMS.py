@@ -2,6 +2,7 @@ import boto3
 import sys
 import subprocess
 from botocore.exceptions import NoCredentialsError, PartialCredentialsError
+import paramiko
 
 # AWS 클라이언트 초기화
 ec2 = boto3.client('ec2', region_name='ap-northeast-2')
@@ -102,20 +103,44 @@ def list_images(filter_name=None):
         print(f"Error listing images: {e}")
 
 # 9. HTCondor 상태 조회
-def condor_status():
-    print("Executing 'condor_status'...")
+def condor_status(instance_id):
+    command = "condor_status"
+    print(f"Executing '{command}' on instance {instance_id}...")
     try:
-        result = subprocess.run(["condor_status"], capture_output=True, text=True)
-        if result.returncode == 0:
-            print("condor_status output:")
-            print(result.stdout)
-        else:
-            print("condor_status command failed.")
-            print(result.stderr)
-    except FileNotFoundError:
-        print("condor_status command not found. Please ensure HTCondor is installed and accessible.")
+        # 인스턴스 정보 가져오기
+        instance = ec2.describe_instances(InstanceIds=[instance_id])['Reservations'][0]['Instances'][0]
+        public_ip = instance.get('PublicIpAddress')
+        
+        if not public_ip:
+            print("Error: Instance does not have a public IP address.")
+            return
+        
+        # SSH 접속 정보
+        ssh_key_path = "../cloud-test.pem"  # SSH 프라이빗 키 파일 경로
+        username = "ec2-user"  # AWS에서 기본 사용자 (Amazon Linux의 경우)
+
+        # SSH 연결 설정
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        ssh.connect(public_ip, username=username, key_filename=ssh_key_path)
+
+        # 명령 실행
+        stdin, stdout, stderr = ssh.exec_command(command)
+        output = stdout.read().decode()
+        error = stderr.read().decode()
+
+        # 결과 출력
+        if output:
+            print("Command output:")
+            print(output)
+        if error:
+            print("Command error:")
+            print(error)
+
+        # 연결 종료
+        ssh.close()
     except Exception as e:
-        print(f"Error executing condor_status: {e}")
+        print(f"Error executing SSH command: {e}")
 
 def main():
     while True:
@@ -128,7 +153,7 @@ def main():
         print("6. Create instance")
         print("7. Reboot instance")
         print("8. List images")
-        print("9. Execute 'condor_status'")
+        print("9. Execute 'condor_status' on master node")
         print("99. Quit")
         choice = input("Enter your choice: ")
 
@@ -151,10 +176,11 @@ def main():
             instance_id = input("Enter the instance ID to reboot: ")
             reboot_instance(instance_id)
         elif choice == '8':
-            filter_name = input("Enter AMI filter name (leave empty for all images): ")
+            filter_name = "aws-jaewon-slave"
             list_images(filter_name.strip() or None)
         elif choice == '9':
-            condor_status()
+            instance_id = "i-032fce4eb5d67655b"
+            condor_status(instance_id)
         elif choice == '99':
             print("Exiting...")
             sys.exit()
