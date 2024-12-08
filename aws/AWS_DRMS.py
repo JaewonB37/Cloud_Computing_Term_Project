@@ -1,5 +1,6 @@
 import boto3
 import sys
+import json
 import subprocess
 from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 import paramiko
@@ -7,7 +8,6 @@ from colorama import Fore, Style, init
 from datetime import datetime, timedelta, timezone
 from pytz import timezone as pytz_timezone
 
-# 초기화 (Windows에서도 색상 출력 활성화)
 init()
 
 # AWS 클라이언트 초기화
@@ -243,11 +243,11 @@ def create_network_alarm():
         print(f"Error creating network alarm with email notification: {e}")
         
 # 12. 경보 삭제
-def delete_alarm(alarm_name):
-    print(f"Deleting alarm {alarm_name}...")
+def delete_alarm(choice):
+    print(f"Deleting alarm {choice}...")
     try:
-        cloudwatch.delete_alarms(AlarmNames=[alarm_name])
-        print(f"Successfully deleted alarm {alarm_name}.")
+        cloudwatch.delete_alarms(AlarmNames=[choice])
+        print(f"Successfully deleted alarm {choice}.")
     except Exception as e:
         print(f"Error deleting alarm: {e}")
         
@@ -263,6 +263,8 @@ def get_metric_statistics(choice):
         start_time_utc = end_time_utc - timedelta(hours=6)  # 6시간 데이터 조회
 
         metric_name = 'CPUUtilization' if choice == '1' else 'NetworkIn'
+        unit = 'Percent' if choice == '1' else 'Bytes'
+
         response = cloudwatch.get_metric_statistics(
             Namespace='AWS/EC2',
             MetricName=metric_name,
@@ -276,46 +278,71 @@ def get_metric_statistics(choice):
             EndTime=end_time_utc,
             Period=300,  # 5분 단위로 데이터 그룹화
             Statistics=['Average'],
-            Unit='Percent'
+            Unit=unit
         )
-        
+
         # 결과 출력 (서울 시간으로 변환된 시간 표시)
-        print("Metric statistics retrieved successfully:")
-        for datapoint in response['Datapoints']:
-            timestamp_utc = datapoint['Timestamp']  # UTC 시간
-            timestamp_seoul = timestamp_utc.astimezone(seoul_tz)  # 서울 시간으로 변환
-            average = datapoint['Average']
-            print(f"Timestamp (Seoul Time): {timestamp_seoul}, Average: {average}")
+        if not response['Datapoints']:
+            print(f"No data points found for metric {metric_name} in the last 6 hours.")
+        else:
+            print("Metric statistics retrieved successfully:")
+            for datapoint in response['Datapoints']:
+                timestamp_utc = datapoint['Timestamp']  # UTC 시간
+                timestamp_seoul = timestamp_utc.astimezone(seoul_tz)  # 서울 시간으로 변환
+                average = datapoint['Average']
+                print(f"Timestamp (Seoul Time): {timestamp_seoul}, Average: {average}")
     except Exception as e:
         print(f"Error getting metric statistics: {e}")
+
 
         
 # 14. 메트릭 알람 목록 조회
 def list_metric_alarms(choice):
-    print("Listing metric alarms...")
+    print("Listing alarms...")
     try:
-        metric_name = 'CPUUtilization' if choice == '1' else 'NetworkIn'
-        alarms = cloudwatch.describe_alarms_for_metric(
-            MetricName=metric_name,
-            Namespace='AWS/EC2'
-        )
-        for alarm in alarms['MetricAlarms']:
-            print(f"[Alarm Name] {alarm['AlarmName']}, [State] {alarm['StateValue']}")
+        # Set the alarm name filter based on user choice
+        if choice == '1':
+            alarm_name_filter = 'master-cpu-alarm'
+        elif choice == '2':
+            alarm_name_filter = 'master-network-in-alarm'
+        else:
+            print("Invalid choice. Please select '1' or '2'.")
+            return
+
+        # Describe alarms using CloudWatch
+        alarms = cloudwatch.describe_alarms()
+
+        # Loop through alarms and match the filter
+        for alarm in alarms.get('MetricAlarms', []):
+            if alarm['AlarmName'] == alarm_name_filter:
+                # Print the entire alarm information as formatted JSON
+                print(json.dumps(alarm, indent=4, default=str))
+                return
+
+        # If no matching alarm is found
+        print(f"No alarms found with the name '{alarm_name_filter}'.")
+    
     except Exception as e:
-        print(f"Error listing metric alarms: {e}")        
+        print(f"Error listing alarms: {e}")
         
 # 15. 경보 이력 조회 (서울 시간으로 변환)
 def describe_alarm_history(choice):
     print("Describing alarm history (Seoul Time)...")
     try:
-        metric_name = 'CPUUtilization' if choice == '1' else 'NetworkIn'
-        history = cloudwatch.describe_alarm_history()
+        history = cloudwatch.describe_alarm_history() 
         alarm_events = history.get('AlarmHistoryItems', [])
 
-        # 필터링: 해당 메트릭의 ALARM 상태로 전환된 기록만 표시
+        if choice == '1':
+            alarm_name_filter = 'master-cpu-alarm'
+        elif choice == '2':
+            alarm_name_filter = 'master-network-in-alarm'
+        else:
+            print("Invalid choice. Please select '1' or '2'.")
+            return
+            
         for event in alarm_events:
-            if event['HistoryItemType'] == 'StateUpdate':  # 상태 변경 이벤트만
-                if metric_name in event['HistorySummary'] and 'ALARM' in event['HistorySummary']:
+            if event['HistoryItemType'] == 'StateUpdate':
+                if alarm_name_filter in event['AlarmName']: 
                     timestamp_utc = event['Timestamp']
                     timestamp_seoul = timestamp_utc.astimezone(seoul_tz)  # 서울 시간으로 변환
                     print(f"[Alarm Name] {event['AlarmName']}, [Timestamp (Seoul Time)]: {timestamp_seoul}, [Summary]: {event['HistorySummary']}")
@@ -377,6 +404,9 @@ def main():
                 create_network_alarm()
             else:
                 print("Invalid choice.")
+        elif choice == '12':
+            alarm_choice = input("Enter 1 for CPU or 2 for Network: ")
+            delete_alarm(alarm_choice)
         elif choice == '13':
             metric_choice = input("Enter 1 for CPU or 2 for Network: ")
             get_metric_statistics(metric_choice)
