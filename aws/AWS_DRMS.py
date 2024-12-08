@@ -7,6 +7,10 @@ import paramiko
 from colorama import Fore, Style, init
 from datetime import datetime, timedelta, timezone
 from pytz import timezone as pytz_timezone
+import os
+
+my_instance_id = os.getenv('AWS_INSTANCE_ID')  # 환경 변수에서 인스턴스 ID를 가져오기
+
 
 init()
 
@@ -192,7 +196,7 @@ def create_cpu_alarm():
             Dimensions=[
                 {
                     'Name': 'InstanceId',
-                    'Value': 'i-032fce4eb5d67655b'
+                    'Value': my_instance_id
                 },
             ],
             Unit='Percent',
@@ -232,7 +236,7 @@ def create_network_alarm():
             Dimensions=[
                 {
                     'Name': 'InstanceId',
-                    'Value': 'i-032fce4eb5d67655b'
+                    'Value': my_instance_id
                 },
             ],
             Unit='Bytes',
@@ -265,13 +269,20 @@ seoul_tz = pytz_timezone('Asia/Seoul')
 
 # 13. 메트릭 통계 조회
 def get_metric_statistics(choice):
-    print("Getting metric statistics (Seoul Time)...")
+    print("Getting metric statistics...")
     try:
         end_time_utc = datetime.now(timezone.utc)
         start_time_utc = end_time_utc - timedelta(hours=6)
 
-        metric_name = 'CPUUtilization' if choice == '1' else 'NetworkIn'
-        unit = 'Percent' if choice == '1' else 'Bytes'
+        if choice == '1':
+            metric_name = 'CPUUtilization'
+            unit = 'Percent'
+        elif choice == '2':
+            metric_name = 'NetworkIn'
+            unit = 'Bytes'
+        else:
+            print("Invalid choice. Please select '1' or '2'.")
+            return
 
         response = cloudwatch.get_metric_statistics(
             Namespace='AWS/EC2',
@@ -279,7 +290,7 @@ def get_metric_statistics(choice):
             Dimensions=[
                 {
                     'Name': 'InstanceId',
-                    'Value': 'i-032fce4eb5d67655b'
+                    'Value': my_instance_id
                 },
             ],
             StartTime=start_time_utc,
@@ -327,7 +338,7 @@ def list_metric_alarms(choice):
         
 # 15. 경보 이력 조회
 def describe_alarm_history(choice):
-    print("Describing alarm history (Seoul Time)...")
+    print("Describing alarm history...")
     try:
         history = cloudwatch.describe_alarm_history() 
         alarm_events = history.get('AlarmHistoryItems', [])
