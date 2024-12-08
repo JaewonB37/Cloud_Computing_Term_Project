@@ -284,13 +284,14 @@ def get_metric_statistics(choice):
             print("Invalid choice. Please select '1' or '2'.")
             return
 
+        # CloudWatch 메트릭 통계 API 호출
         response = cloudwatch.get_metric_statistics(
             Namespace='AWS/EC2',
             MetricName=metric_name,
             Dimensions=[
                 {
                     'Name': 'InstanceId',
-                    'Value': my_instance_id
+                    'Value': my_instance_id  # 인스턴스 ID
                 },
             ],
             StartTime=start_time_utc,
@@ -300,16 +301,21 @@ def get_metric_statistics(choice):
             Unit=unit
         )
 
+        # 결과가 없으면 메시지 출력
         if not response['Datapoints']:
             print(f"No data points found for metric {metric_name} in the last 6 hours.")
         else:
-            print("Metric statistics retrieved successfully:")
-            for datapoint in response['Datapoints']:
+            # 데이터 포인트를 타임스탬프 기준으로 정렬
+            sorted_datapoints = sorted(response['Datapoints'], key=lambda x: x['Timestamp'])
+
+            print("Metric statistics retrieved successfully (sorted by time):")
+            for datapoint in sorted_datapoints:
                 timestamp_utc = datapoint['Timestamp']
-                timestamp_seoul = timestamp_utc.astimezone(seoul_tz)
+                timestamp_seoul = timestamp_utc.astimezone(seoul_tz)  # UTC를 서울 시간대로 변환
                 average = datapoint['Average']
                 print(f"Timestamp (Seoul Time): {timestamp_seoul}, Average: {average}")
     except Exception as e:
+        # 예외 처리
         print(f"Error getting metric statistics: {e}")
 
 # 14. 메트릭 알람 목록 조회
@@ -402,7 +408,7 @@ def main():
         elif choice == '8':
             list_images("aws-jaewon-slave")
         elif choice == '9':
-            instance_id = "i-032fce4eb5d67655b"
+            instance_id = my_instance_id
             condor_status(instance_id)
         elif choice == '10':
             list_alarms()
