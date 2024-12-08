@@ -152,7 +152,7 @@ def condor_status(instance_id):
 cloudwatch = boto3.client('cloudwatch', region_name='ap-northeast-2')
 sns = boto3.client('sns', region_name='ap-northeast-2')
         
-# 10. 알람 조회
+# 10. 경보 목록 출력
 def list_alarms():
     print("Listing alarms...")
     try:
@@ -166,18 +166,18 @@ def list_alarms():
 def create_cpu_alarm():
     print("Creating alarm with email notification...")
     try:
-        # 1. SNS 주제 생성
+        # SNS 주제 생성
         sns_topic_name = "CloudWatch_Alarms_Topic"
         response = sns.create_topic(Name=sns_topic_name)
         sns_topic_arn = response['TopicArn']  # SNS 주제 ARN
         
-        # 2. 이메일 주소를 SNS 주제에 구독
+        # 이메일 주소를 SNS 주제에 구독
         email = "bjo3079@gmail.com"
         sns.subscribe(TopicArn=sns_topic_arn, Protocol='email', Endpoint=email)
         print(f"Subscribed emails to SNS topic: {sns_topic_arn}")
         print("Please confirm email subscriptions via the confirmation email sent to each address.")
 
-        # 3. CloudWatch 알람 생성
+        # CloudWatch 알람 생성
         cloudwatch.put_metric_alarm(
             AlarmName='master-cpu-alarm',
             ComparisonOperator='GreaterThanThreshold',
@@ -236,7 +236,7 @@ def create_network_alarm():
                 },
             ],
             Unit='Bytes',
-            AlarmActions=[sns_topic_arn]  # SNS 주제와 연결
+            AlarmActions=[sns_topic_arn]
         )
         print("Successfully created network alarm with email notifications.")
     except Exception as e:
@@ -244,12 +244,21 @@ def create_network_alarm():
         
 # 12. 경보 삭제
 def delete_alarm(choice):
-    print(f"Deleting alarm {choice}...")
+    if choice == '1':
+        alarm_name = 'master-cpu-alarm'
+    elif choice == '2':
+        alarm_name = 'master-network-in-alarm'
+    else:
+        print("Invalid choice. Please select '1' or '2'.")
+        return
+
+    print(f"Deleting alarm {alarm_name}...")
     try:
-        cloudwatch.delete_alarms(AlarmNames=[choice])
-        print(f"Successfully deleted alarm {choice}.")
+        cloudwatch.delete_alarms(AlarmNames=[alarm_name])
+        print(f"Successfully deleted alarm {alarm_name}.")
     except Exception as e:
         print(f"Error deleting alarm: {e}")
+
         
 # 서울 시간대 정의
 seoul_tz = pytz_timezone('Asia/Seoul')
@@ -294,13 +303,10 @@ def get_metric_statistics(choice):
     except Exception as e:
         print(f"Error getting metric statistics: {e}")
 
-
-        
 # 14. 메트릭 알람 목록 조회
 def list_metric_alarms(choice):
     print("Listing alarms...")
     try:
-        # Set the alarm name filter based on user choice
         if choice == '1':
             alarm_name_filter = 'master-cpu-alarm'
         elif choice == '2':
@@ -309,17 +315,13 @@ def list_metric_alarms(choice):
             print("Invalid choice. Please select '1' or '2'.")
             return
 
-        # Describe alarms using CloudWatch
         alarms = cloudwatch.describe_alarms()
 
-        # Loop through alarms and match the filter
         for alarm in alarms.get('MetricAlarms', []):
             if alarm['AlarmName'] == alarm_name_filter:
-                # Print the entire alarm information as formatted JSON
                 print(json.dumps(alarm, indent=4, default=str))
                 return
 
-        # If no matching alarm is found
         print(f"No alarms found with the name '{alarm_name_filter}'.")
     
     except Exception as e:
@@ -344,7 +346,7 @@ def describe_alarm_history(choice):
             if event['HistoryItemType'] == 'StateUpdate':
                 if alarm_name_filter in event['AlarmName']: 
                     timestamp_utc = event['Timestamp']
-                    timestamp_seoul = timestamp_utc.astimezone(seoul_tz)  # 서울 시간으로 변환
+                    timestamp_seoul = timestamp_utc.astimezone(seoul_tz)
                     print(f"[Alarm Name] {event['AlarmName']}, [Timestamp (Seoul Time)]: {timestamp_seoul}, [Summary]: {event['HistorySummary']}")
     except Exception as e:
         print(f"Error describing alarm history: {e}")
