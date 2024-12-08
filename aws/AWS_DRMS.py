@@ -108,7 +108,7 @@ def reboot_instance(instance_id):
         print(f"Error rebooting instance: {e}")
 
 # 8. AMI 이미지 목록 조회
-def list_images(filter_name=None):
+def list_images(filter_name):
     print(f"Listing images...")
     try:
         filters = []
@@ -389,8 +389,7 @@ def main():
             instance_id = input("Enter the instance ID to reboot: ")
             reboot_instance(instance_id)
         elif choice == '8':
-            filter_name = "aws-jaewon-slave"
-            list_images(filter_name.strip() or None)
+            list_images("aws-jaewon-slave")
         elif choice == '9':
             instance_id = "i-032fce4eb5d67655b"
             condor_status(instance_id)
