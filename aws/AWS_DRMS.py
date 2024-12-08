@@ -162,8 +162,8 @@ def list_alarms():
     except Exception as e:
         print(f"Error listing alarms: {e}")
         
-# 11. 알람 생성
-def create_alarm():
+# 11-1. CPU Utilization 경보 생성
+def create_cpu_alarm():
     print("Creating alarm with email notification...")
     try:
         # 1. SNS 주제 생성
@@ -202,7 +202,47 @@ def create_alarm():
     except Exception as e:
         print(f"Error creating alarm with email notification: {e}")
         
-# 12. 알람 삭제
+# 11-2. 네트워크 트래픽 경보 생성
+def create_network_alarm():
+    print("Creating network alarm with email notification...")
+    try:
+        # SNS 주제 생성
+        sns_topic_name = "Network_Alarms_Topic"
+        response = sns.create_topic(Name=sns_topic_name)
+        sns_topic_arn = response['TopicArn']  # SNS 주제 ARN
+
+        # 이메일 주소를 SNS 주제에 구독
+        email = "bjo3079@gmail.com"
+        sns.subscribe(TopicArn=sns_topic_arn, Protocol='email', Endpoint=email)
+        print(f"Subscribed emails to SNS topic: {sns_topic_arn}")
+        print("Please confirm email subscriptions via the confirmation email sent to each address.")
+
+        # CloudWatch 네트워크 트래픽 알람 생성
+        cloudwatch.put_metric_alarm(
+            AlarmName='master-network-in-alarm',
+            ComparisonOperator='GreaterThanThreshold',
+            EvaluationPeriods=1,
+            MetricName='NetworkIn',
+            Namespace='AWS/EC2',
+            Period=60,
+            Statistic='Average',
+            Threshold=5000000.0,
+            ActionsEnabled=True,
+            AlarmDescription='Alarm when network in exceeds 5MB',
+            Dimensions=[
+                {
+                    'Name': 'InstanceId',
+                    'Value': 'i-032fce4eb5d67655b'
+                },
+            ],
+            Unit='Bytes',
+            AlarmActions=[sns_topic_arn]  # SNS 주제와 연결
+        )
+        print("Successfully created network alarm with email notifications.")
+    except Exception as e:
+        print(f"Error creating network alarm with email notification: {e}")
+        
+# 12. 경보 삭제
 def delete_alarm(alarm_name):
     print(f"Deleting alarm {alarm_name}...")
     try:
@@ -215,20 +255,17 @@ def delete_alarm(alarm_name):
 seoul_tz = pytz_timezone('Asia/Seoul')
 
 # 13. 메트릭 통계 조회
-def get_metric_statistics():
+def get_metric_statistics(choice):
     print("Getting metric statistics (Seoul Time)...")
     try:
         # 현재 시간 기준으로 시간 범위 설정 (마지막 6시간)
         end_time_utc = datetime.now(timezone.utc)  # 현재 시간(UTC)
         start_time_utc = end_time_utc - timedelta(hours=6)  # 6시간 데이터 조회
 
-        # 서울 시간으로 변환
-        end_time_seoul = end_time_utc.astimezone(seoul_tz)
-        start_time_seoul = start_time_utc.astimezone(seoul_tz)
-
+        metric_name = 'CPUUtilization' if choice == '1' else 'NetworkIn'
         response = cloudwatch.get_metric_statistics(
             Namespace='AWS/EC2',
-            MetricName='CPUUtilization',
+            MetricName=metric_name,
             Dimensions=[
                 {
                     'Name': 'InstanceId',
@@ -254,11 +291,12 @@ def get_metric_statistics():
 
         
 # 14. 메트릭 알람 목록 조회
-def list_metric_alarms():
+def list_metric_alarms(choice):
     print("Listing metric alarms...")
     try:
+        metric_name = 'CPUUtilization' if choice == '1' else 'NetworkIn'
         alarms = cloudwatch.describe_alarms_for_metric(
-            MetricName='CPUUtilization',
+            MetricName=metric_name,
             Namespace='AWS/EC2'
         )
         for alarm in alarms['MetricAlarms']:
@@ -266,17 +304,18 @@ def list_metric_alarms():
     except Exception as e:
         print(f"Error listing metric alarms: {e}")        
         
-# 15. 알람 이력 조회 (서울 시간으로 변환)
-def describe_alarm_history():
+# 15. 경보 이력 조회 (서울 시간으로 변환)
+def describe_alarm_history(choice):
     print("Describing alarm history (Seoul Time)...")
     try:
+        metric_name = 'CPUUtilization' if choice == '1' else 'NetworkIn'
         history = cloudwatch.describe_alarm_history()
         alarm_events = history.get('AlarmHistoryItems', [])
 
-        # 필터링: ALARM 상태로 전환된 기록만 표시
+        # 필터링: 해당 메트릭의 ALARM 상태로 전환된 기록만 표시
         for event in alarm_events:
             if event['HistoryItemType'] == 'StateUpdate':  # 상태 변경 이벤트만
-                if 'ALARM' in event['HistorySummary']:  # ALARM 상태 확인
+                if metric_name in event['HistorySummary'] and 'ALARM' in event['HistorySummary']:
                     timestamp_utc = event['Timestamp']
                     timestamp_seoul = timestamp_utc.astimezone(seoul_tz)  # 서울 시간으로 변환
                     print(f"[Alarm Name] {event['AlarmName']}, [Timestamp (Seoul Time)]: {timestamp_seoul}, [Summary]: {event['HistorySummary']}")
@@ -331,16 +370,22 @@ def main():
         elif choice == '10':
             list_alarms()
         elif choice == '11':
-            create_alarm()
-        elif choice == '12':
-            alarm_name = input("Enter alarm name to delete: ")
-            delete_alarm(alarm_name)
+            metric_choice = input("Enter 1 for CPU or 2 for Network: ")
+            if metric_choice == '1':
+                create_cpu_alarm()
+            elif metric_choice == '2':
+                create_network_alarm()
+            else:
+                print("Invalid choice.")
         elif choice == '13':
-            get_metric_statistics()
+            metric_choice = input("Enter 1 for CPU or 2 for Network: ")
+            get_metric_statistics(metric_choice)
         elif choice == '14':
-            list_metric_alarms()
+            metric_choice = input("Enter 1 for CPU or 2 for Network: ")
+            list_metric_alarms(metric_choice)
         elif choice == '15':
-            describe_alarm_history()
+            metric_choice = input("Enter 1 for CPU or 2 for Network: ")
+            describe_alarm_history(metric_choice)
         elif choice == '99':
             print("Exiting...")
             sys.exit()
