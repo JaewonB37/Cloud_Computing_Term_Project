@@ -5,6 +5,7 @@ from botocore.exceptions import NoCredentialsError, PartialCredentialsError
 import paramiko
 from colorama import Fore, Style, init
 from datetime import datetime, timedelta, timezone
+from pytz import timezone as pytz_timezone
 
 # 초기화 (Windows에서도 색상 출력 활성화)
 init()
@@ -149,6 +150,7 @@ def condor_status(instance_id):
         
 # CloudWatch 클라이언트 초기화
 cloudwatch = boto3.client('cloudwatch', region_name='ap-northeast-2')
+sns = boto3.client('sns', region_name='ap-northeast-2')
         
 # 10. 알람 조회
 def list_alarms():
@@ -162,30 +164,43 @@ def list_alarms():
         
 # 11. 알람 생성
 def create_alarm():
-    print("Creating alarm...")
+    print("Creating alarm with email notification...")
     try:
-        response = cloudwatch.put_metric_alarm(
-            AlarmName='my-alarm',
+        # 1. SNS 주제 생성
+        sns_topic_name = "CloudWatch_Alarms_Topic"
+        response = sns.create_topic(Name=sns_topic_name)
+        sns_topic_arn = response['TopicArn']  # SNS 주제 ARN
+        
+        # 2. 이메일 주소를 SNS 주제에 구독
+        email = "bjo3079@gmail.com"
+        sns.subscribe(TopicArn=sns_topic_arn, Protocol='email', Endpoint=email)
+        print(f"Subscribed emails to SNS topic: {sns_topic_arn}")
+        print("Please confirm email subscriptions via the confirmation email sent to each address.")
+
+        # 3. CloudWatch 알람 생성
+        cloudwatch.put_metric_alarm(
+            AlarmName='master-cpu-alarm',
             ComparisonOperator='GreaterThanThreshold',
             EvaluationPeriods=1,
             MetricName='CPUUtilization',
             Namespace='AWS/EC2',
             Period=60,
             Statistic='Average',
-            Threshold=70.0,
-            ActionsEnabled=False,
-            AlarmDescription='Alarm when server CPU exceeds 70%',
+            Threshold=30.0,
+            ActionsEnabled=True,  # 알림 활성화
+            AlarmDescription='Alarm when server CPU exceeds 30%',
             Dimensions=[
                 {
                     'Name': 'InstanceId',
                     'Value': 'i-032fce4eb5d67655b'
                 },
             ],
-            Unit='Percent'
+            Unit='Percent',
+            AlarmActions=[sns_topic_arn]  # SNS 주제와 연결
         )
-        print("Successfully created alarm.")
+        print("Successfully created alarm with email notifications.")
     except Exception as e:
-        print(f"Error creating alarm: {e}")
+        print(f"Error creating alarm with email notification: {e}")
         
 # 12. 알람 삭제
 def delete_alarm(alarm_name):
@@ -196,23 +211,20 @@ def delete_alarm(alarm_name):
     except Exception as e:
         print(f"Error deleting alarm: {e}")
         
-# 13. 메트릭 목록 조회
-def list_metrics():
-    print("Listing metrics...")
-    try:
-        metrics = cloudwatch.list_metrics()
-        for metric in metrics['Metrics']:
-            print(f"[Namespace] {metric['Namespace']}, [Metric Name] {metric['MetricName']}")
-    except Exception as e:
-        print(f"Error listing metrics: {e}")
-        
-# 14. 메트릭 통계 조회
+# 서울 시간대 정의
+seoul_tz = pytz_timezone('Asia/Seoul')
+
+# 13. 메트릭 통계 조회
 def get_metric_statistics():
-    print("Getting metric statistics...")
+    print("Getting metric statistics (Seoul Time)...")
     try:
-        # 현재 시간 기준으로 시간 범위 설정 (마지막 24시간)
-        end_time = datetime.now(timezone.utc)  # 현재 시간(UTC)
-        start_time = end_time - timedelta(hours=6)  # 6시간 데이터 조회
+        # 현재 시간 기준으로 시간 범위 설정 (마지막 6시간)
+        end_time_utc = datetime.now(timezone.utc)  # 현재 시간(UTC)
+        start_time_utc = end_time_utc - timedelta(hours=6)  # 6시간 데이터 조회
+
+        # 서울 시간으로 변환
+        end_time_seoul = end_time_utc.astimezone(seoul_tz)
+        start_time_seoul = start_time_utc.astimezone(seoul_tz)
 
         response = cloudwatch.get_metric_statistics(
             Namespace='AWS/EC2',
@@ -220,26 +232,28 @@ def get_metric_statistics():
             Dimensions=[
                 {
                     'Name': 'InstanceId',
-                    'Value': 'i-12345678'  # 실제 인스턴스 ID로 변경
+                    'Value': 'i-032fce4eb5d67655b'  # 실제 인스턴스 ID로 변경
                 },
             ],
-            StartTime=start_time,
-            EndTime=end_time,
+            StartTime=start_time_utc,  # AWS API는 UTC만 지원
+            EndTime=end_time_utc,
             Period=300,  # 5분 단위로 데이터 그룹화
             Statistics=['Average'],
             Unit='Percent'
         )
         
-        # 결과 출력
+        # 결과 출력 (서울 시간으로 변환된 시간 표시)
         print("Metric statistics retrieved successfully:")
         for datapoint in response['Datapoints']:
-            timestamp = datapoint['Timestamp']
+            timestamp_utc = datapoint['Timestamp']  # UTC 시간
+            timestamp_seoul = timestamp_utc.astimezone(seoul_tz)  # 서울 시간으로 변환
             average = datapoint['Average']
-            print(f"Timestamp: {timestamp}, Average: {average}")
+            print(f"Timestamp (Seoul Time): {timestamp_seoul}, Average: {average}")
     except Exception as e:
         print(f"Error getting metric statistics: {e}")
+
         
-# 15. 메트릭 알람 목록 조회
+# 14. 메트릭 알람 목록 조회
 def list_metric_alarms():
     print("Listing metric alarms...")
     try:
@@ -250,97 +264,44 @@ def list_metric_alarms():
         for alarm in alarms['MetricAlarms']:
             print(f"[Alarm Name] {alarm['AlarmName']}, [State] {alarm['StateValue']}")
     except Exception as e:
-        print(f"Error listing metric alarms: {e}")
+        print(f"Error listing metric alarms: {e}")        
         
-# CloudWatch Logs 클라이언트 초기화
-logs = boto3.client('logs', region_name='ap-northeast-2')
-
-# 16. 메트릭 필터 목록 조회
-def list_metric_filters():
-    print("Listing metric filters...")
-    try:
-        log_group_name = input("Enter log group name: ").strip()
-        if not log_group_name:
-            print("Log group name cannot be empty.")
-            return
-        response = logs.describe_metric_filters(logGroupName=log_group_name)
-        metric_filters = response.get('metricFilters', [])
-        if not metric_filters:
-            print(f"No metric filters found for log group {log_group_name}.")
-        for metric_filter in metric_filters:
-            print(f"[Filter Name] {metric_filter['filterName']}, [Pattern] {metric_filter['filterPattern']}")
-    except Exception as e:
-        print(f"Error listing metric filters: {e}")
-
-# 17. 메트릭 필터 추가
-def put_metric_filter():
-    print("Putting metric filter...")
-    try:
-        log_group_name = input("Enter log group name: ").strip()
-        if not log_group_name:
-            print("Log group name cannot be empty.")
-            return
-        response = logs.put_metric_filter(
-            logGroupName=log_group_name,
-            filterName='my-metric-filter',
-            filterPattern='ERROR',
-            metricTransformations=[
-                {
-                    'metricName': 'ErrorCount',
-                    'metricNamespace': 'MyNamespace',
-                    'metricValue': '1'
-                }
-            ]
-        )
-        print("Successfully created metric filter.")
-    except Exception as e:
-        print(f"Error putting metric filter: {e}")
-
-# 18. 메트릭 필터 삭제
-def delete_metric_filter(filter_name):
-    print(f"Deleting metric filter {filter_name}...")
-    try:
-        log_group_name = input("Enter log group name: ").strip()
-        if not log_group_name:
-            print("Log group name cannot be empty.")
-            return
-        logs.delete_metric_filter(logGroupName=log_group_name, filterName=filter_name)
-        print(f"Successfully deleted metric filter {filter_name}.")
-    except Exception as e:
-        print(f"Error deleting metric filter: {e}")
-
-        
-        
-# 19. 알람 이력 조회
+# 15. 알람 이력 조회 (서울 시간으로 변환)
 def describe_alarm_history():
-    print("Describing alarm history...")
+    print("Describing alarm history (Seoul Time)...")
     try:
         history = cloudwatch.describe_alarm_history()
-        for event in history['AlarmHistoryItems']:
-            print(f"[Alarm Name] {event['AlarmName']}, [Timestamp] {event['Timestamp']}")
+        alarm_events = history.get('AlarmHistoryItems', [])
+
+        # 필터링: ALARM 상태로 전환된 기록만 표시
+        for event in alarm_events:
+            if event['HistoryItemType'] == 'StateUpdate':  # 상태 변경 이벤트만
+                if 'ALARM' in event['HistorySummary']:  # ALARM 상태 확인
+                    timestamp_utc = event['Timestamp']
+                    timestamp_seoul = timestamp_utc.astimezone(seoul_tz)  # 서울 시간으로 변환
+                    print(f"[Alarm Name] {event['AlarmName']}, [Timestamp (Seoul Time)]: {timestamp_seoul}, [Summary]: {event['HistorySummary']}")
     except Exception as e:
         print(f"Error describing alarm history: {e}")
 
 # 메인 함수
 def main():
     while True:
-        print("------------------------------------------------------------")
+        print("-------------------------------------------------------------")
         print("           Amazon AWS Control Panel using SDK               ")
-        print("------------------------------------------------------------")
+        print("-------------------------------------------------------------")
         print("  1. List instances                2. Available zones")
         print("  3. Start instance                4. Available regions")
         print("  5. Stop instance                 6. Create instance")
         print("  7. Reboot instance               8. List images")
         print("  9. Execute 'condor_status'")
-        print("------------------------------------------------------------")
+        print("-------------------------------------------------------------")
         # Cloud Watch
         print(" 10. List alarms                   11. Create alarm")
-        print(" 12. Delete alarm                  13. List metrics")
-        print(" 14. Get metric statistics         15. List metric alarms")
-        print(" 16. List metric filters           17. Put metric filter")
-        print(" 18. Delete metric filter          19. Describe alarm history")
-        print("------------------------------------------------------------")        
-        print("                                 99. Quit")
+        print(" 12. Delete alarm                  13. Get metric statistics")
+        print(" 14. List metric alarms            15. Describe alarm history")
+        print("-------------------------------------------------------------")        
+        print("                                   99. Quit")
+        print("-------------------------------------------------------------")  
         choice = input("Enter your choice: ")
 
         if choice == '1':
@@ -375,19 +336,10 @@ def main():
             alarm_name = input("Enter alarm name to delete: ")
             delete_alarm(alarm_name)
         elif choice == '13':
-            list_metrics()
-        elif choice == '14':
             get_metric_statistics()
-        elif choice == '15':
+        elif choice == '14':
             list_metric_alarms()
-        elif choice == '16':
-            list_metric_filters()
-        elif choice == '17':
-            put_metric_filter()
-        elif choice == '18':
-            filter_name = input("Enter filter name to delete: ")
-            delete_metric_filter(filter_name)
-        elif choice == '19':
+        elif choice == '15':
             describe_alarm_history()
         elif choice == '99':
             print("Exiting...")
