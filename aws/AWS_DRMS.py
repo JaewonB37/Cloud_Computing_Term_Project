@@ -267,9 +267,8 @@ seoul_tz = pytz_timezone('Asia/Seoul')
 def get_metric_statistics(choice):
     print("Getting metric statistics (Seoul Time)...")
     try:
-        # 현재 시간 기준으로 시간 범위 설정 (마지막 6시간)
-        end_time_utc = datetime.now(timezone.utc)  # 현재 시간(UTC)
-        start_time_utc = end_time_utc - timedelta(hours=6)  # 6시간 데이터 조회
+        end_time_utc = datetime.now(timezone.utc)
+        start_time_utc = end_time_utc - timedelta(hours=6)
 
         metric_name = 'CPUUtilization' if choice == '1' else 'NetworkIn'
         unit = 'Percent' if choice == '1' else 'Bytes'
@@ -280,24 +279,23 @@ def get_metric_statistics(choice):
             Dimensions=[
                 {
                     'Name': 'InstanceId',
-                    'Value': 'i-032fce4eb5d67655b'  # 실제 인스턴스 ID로 변경
+                    'Value': 'i-032fce4eb5d67655b'
                 },
             ],
-            StartTime=start_time_utc,  # AWS API는 UTC만 지원
+            StartTime=start_time_utc,
             EndTime=end_time_utc,
-            Period=300,  # 5분 단위로 데이터 그룹화
+            Period=300,
             Statistics=['Average'],
             Unit=unit
         )
 
-        # 결과 출력 (서울 시간으로 변환된 시간 표시)
         if not response['Datapoints']:
             print(f"No data points found for metric {metric_name} in the last 6 hours.")
         else:
             print("Metric statistics retrieved successfully:")
             for datapoint in response['Datapoints']:
-                timestamp_utc = datapoint['Timestamp']  # UTC 시간
-                timestamp_seoul = timestamp_utc.astimezone(seoul_tz)  # 서울 시간으로 변환
+                timestamp_utc = datapoint['Timestamp']
+                timestamp_seoul = timestamp_utc.astimezone(seoul_tz)
                 average = datapoint['Average']
                 print(f"Timestamp (Seoul Time): {timestamp_seoul}, Average: {average}")
     except Exception as e:
@@ -327,7 +325,7 @@ def list_metric_alarms(choice):
     except Exception as e:
         print(f"Error listing alarms: {e}")
         
-# 15. 경보 이력 조회 (서울 시간으로 변환)
+# 15. 경보 이력 조회
 def describe_alarm_history(choice):
     print("Describing alarm history (Seoul Time)...")
     try:
